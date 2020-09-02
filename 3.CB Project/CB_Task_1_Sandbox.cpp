@@ -3,14 +3,11 @@
 
 #include "CB_Task_1_Sandbox.h"
 
-double K[3] = { 15, 0.068, 0.08 };
+double K[3] = { 25,40,90 };
 //double K[3] = { 0, 0, 0 };
-//20,0.05,6
-//10,0.03,0.1
-//10,0.03,0.08
-//10,0.07,0.06
+//15,0.068,0.08 = eshape
 
-
+unsigned char BOW = 1; // Black on White
 
 unsigned char isConverged = 0;
 
@@ -31,8 +28,25 @@ int readPosition() {
 
 	/*printf("\n %d %d %d", left_sensor, center_sensor, right_sensor);*/
 
+	if (left_sensor == 255 && center_sensor == 0 && right_sensor == 255 && BOW == 1)
+		BOW = 0;
+
+	if (BOW == 0) {
+		left_sensor = 255 - left_sensor;
+		center_sensor = 255 - center_sensor;
+		right_sensor = 255 - right_sensor;
+
+		if (left_sensor == 255 && center_sensor == 0 && right_sensor == 255) {
+			BOW = 1;
+			left_sensor = 255 - left_sensor;
+			center_sensor = 255 - center_sensor;
+			right_sensor = 255 - right_sensor;
+		}
+	}
+
 	if (left_sensor == 255 && center_sensor == 0 && right_sensor == 0) {
 		x1 = 1, x2 = 0, x3 = 0, x4 = 0, x5 = 0, x6 = 0;
+		
 	}
 	if (left_sensor == 255 && center_sensor == 255 && right_sensor == 0) {
 		x1 = 0, x2 = 1, x3 = 0, x4 = 0, x5 = 0, x6 = 0;
@@ -49,6 +63,10 @@ int readPosition() {
 	if (left_sensor == 0 && center_sensor == 0 && right_sensor == 255) {
 		x1 = 0, x2 = 0, x3 = 0, x4 = 0, x5 = 0, x6 = 1;
 	}
+	
+	if (left_sensor == 0 && center_sensor == 0 && right_sensor == 0) {
+		x1 = 0, x2 = 0, x3 = 0, x4 = 1, x5 = 0, x6 = 0;
+	}
 	// Monotonic error function
 	a1 = -2, a2 = -1, a3 = 0, a4 = 0, a5 = 1, a6 = 2;
 	b1 = b2 = b3 = b4 = b5 = b6 = 0.5;
@@ -62,7 +80,12 @@ int readPosition() {
 unsigned int PIDcontrol(unsigned char node, double K[3], unsigned char isConverged) {
 	int position;
 
+	unsigned int prevMotorPosL[3] = { 0,0,0 }; // rightmost recent
+	unsigned int prevMotorPosR[3] = { 0,0,0 };
+
 	unsigned char nodeIdx = 0;
+
+	unsigned char vel = 100;
 
 	unsigned char left_sensor, center_sensor, right_sensor;
 
@@ -74,6 +97,7 @@ unsigned int PIDcontrol(unsigned char node, double K[3], unsigned char isConverg
 	int previousError = 0;
 	double PIDvalue;
 
+	int motorL, motorR;
 
 	unsigned char nodeFlag = 1;
 
@@ -88,11 +112,7 @@ unsigned int PIDcontrol(unsigned char node, double K[3], unsigned char isConverg
 
 	previousError = position;
 
-	//PIDvalue *= 50;
-	//PIDvalue *= 127;
-
-	// Print PID value
-	printf("%lf %f %f %f %d %d %d \n", PIDvalue,Kp,Ki,Kd,P,I,D);
+	//printf("%lf %f %f %f %d %d %d \n", PIDvalue,Kp,Ki,Kd,P,I,D);
 	
 
 	if (PIDvalue > 127.0)
@@ -100,12 +120,55 @@ unsigned int PIDcontrol(unsigned char node, double K[3], unsigned char isConverg
 	else if (PIDvalue < -127.0)
 		PIDvalue = -127;
 
-	// Proceed forward till you're not on node
-	forward();
+	if (position == 5) {
+		vel -= 90;
+		previousError = 0;
+		back();
+		for (int p = 2; p >= 0; p--) {
+			velocity(prevMotorPosL[p]-vel, prevMotorPosR[p]-vel);
+		}
+		//vel += 40;
+	}
+	else {
 
-	// PIDvalue +ve: move right;
-	// PIDvalue -ve: move left;
-	velocity(150 + (int)PIDvalue, 150 - (int)PIDvalue);
+		motorL = vel + (int)PIDvalue;
+		motorR = vel - (int)PIDvalue;
+		
+		if (motorL > 0 && motorR > 0) {
+			forward();
+			velocity(motorL, motorR);
+		}
+		else if (motorL > 0 && motorR < 0) {
+			right();
+			velocity(motorL, abs(motorR));
+		}
+		else if (motorL < 0 && motorR > 0) {
+			left();
+			velocity(abs(motorL), motorR);
+		}
+		else {
+			back();
+			velocity(abs(motorL), abs(motorR));
+		}
+
+		// Proceed forward till you're not on node
+		//forward();
+		// PIDvalue +ve: move right;
+		// PIDvalue -ve: move left;
+		//velocity(vel + (int)PIDvalue, vel - (int)PIDvalue);
+		printf("\n %d %d %d %d", vel + (int)PIDvalue, vel - (int)PIDvalue, position, BOW);
+
+		for (int p = 2; p > 0; p--) {
+			prevMotorPosL[p - 1] = prevMotorPosL[p];
+		}
+		prevMotorPosL[2] = vel + (int)PIDvalue;
+
+		for (int p = 2; p > 0; p--) {
+			prevMotorPosR[p - 1] = prevMotorPosR[p];
+		}
+		prevMotorPosR[2] = vel - (int)PIDvalue;
+
+	}
 
 	if (isConverged == 1) {
 
@@ -122,10 +185,7 @@ unsigned int PIDcontrol(unsigned char node, double K[3], unsigned char isConverg
 
 			previousError = position;
 
-			//PIDvalue *= 50;
-			//PIDvalue *= 127;
-			// Print PID value
-			printf("%lf %f %f %f %d %d %d \n", PIDvalue, Kp , Ki , Kd , P, I, D);
+			//printf("%lf %f %f %f %d %d %d \n", PIDvalue, Kp , Ki , Kd , P, I, D);
 
 
 			if (PIDvalue > 127.0)
@@ -133,12 +193,54 @@ unsigned int PIDcontrol(unsigned char node, double K[3], unsigned char isConverg
 			else if (PIDvalue < -127.0)
 				PIDvalue = -127;
 
-			// Proceed forward till you're not on node
-			forward();
+			if (position == 5) {
+				vel -= 90;
+				previousError = 0;
+				back();
+				for (int p = 2; p >= 0; p--) {
+					velocity(prevMotorPosL[p] - vel, prevMotorPosR[p] - vel);
+				}
+				//vel += 40;
+			} 
+			else {
 
-			// PIDvalue +ve: move right;
-			// PIDvalue -ve: move left;
-			velocity(150 + (int)PIDvalue, 150 - (int)PIDvalue);
+				motorL = vel + (int)PIDvalue;
+				motorR = vel - (int)PIDvalue;
+
+				if (motorL > 0 && motorR > 0) {
+					forward();
+					velocity(motorL, motorR);
+				}
+				else if (motorL > 0 && motorR < 0) {
+					right();
+					velocity(motorL, abs(motorR));
+				}
+				else if (motorL < 0 && motorR > 0) {
+					left();
+					velocity(abs(motorL), motorR);
+				}
+				else {
+					back();
+					velocity(abs(motorL), abs(motorR));
+				}
+
+				// Proceed forward till you're not on node
+				// forward();
+
+				// PIDvalue +ve: move right;
+				// PIDvalue -ve: move left;
+				// velocity(vel + (int)PIDvalue, vel - (int)PIDvalue);
+
+				for (int p = 2; p > 0; p--) {
+					prevMotorPosL[p - 1] = prevMotorPosL[p];
+				}
+				prevMotorPosL[2] = vel + (int)PIDvalue;
+
+				for (int p = 2; p > 0; p--) {
+					prevMotorPosR[p - 1] = prevMotorPosR[p];
+				}
+				prevMotorPosR[2] = vel - (int)PIDvalue;
+			}
 
 			// Fetch sensor position
 			left_sensor = ADC_Conversion(1);
@@ -152,6 +254,7 @@ unsigned int PIDcontrol(unsigned char node, double K[3], unsigned char isConverg
 				nodeIdx++;
 				nodeFlag = 0;
 			}
+			printf("\n %d %d %d %d %d", vel + (int)PIDvalue, vel - (int)PIDvalue, position, nodeIdx, BOW);
 
 			if (left_sensor == 0 && center_sensor == 255 && right_sensor == 0) {
 				nodeFlag = 1;
@@ -162,17 +265,18 @@ unsigned int PIDcontrol(unsigned char node, double K[3], unsigned char isConverg
 				//printf("\n%d nodes crossed", node);
 				while (1) {
 					forward();
-					velocity(150 + (int)PIDvalue, 150 - (int)PIDvalue);//100,100
+					velocity(100,100);//100,100
 					left_sensor = ADC_Conversion(1);
 					center_sensor = ADC_Conversion(2);
 					right_sensor = ADC_Conversion(3);
 					printf("\n %d %d %d %d", left_sensor, center_sensor, right_sensor, nodeIdx);
 					if (left_sensor == 255 && center_sensor == 255 && right_sensor == 255) {
-						_delay_ms(450);//650
-						//stop();
+						_delay_ms(850);//650
+						stop();
 						break;
 					}
 				}
+				_delay_ms(500);
 
 				break; // to come out of while(1) when # of nodes have crossed
 
@@ -218,16 +322,33 @@ void forward_wls(unsigned char node)
 void left_turn_wls(void)
 {
 	unsigned char left_sensor, center_sensor, right_sensor;
+
 	while (1) {
+
+		left();
+
 		left_sensor = ADC_Conversion(1);
 		center_sensor = ADC_Conversion(2);
 		right_sensor = ADC_Conversion(3);
+		printf("\n %d %d %d", left_sensor, center_sensor, right_sensor);
+		if (left_sensor == 0 && center_sensor == 0 && right_sensor == 0) {
+			stop();
+			break;
+		}
+	}
 
+	while (1) {
+
+		left();
+
+		left_sensor = ADC_Conversion(1);
+		center_sensor = ADC_Conversion(2);
+		right_sensor = ADC_Conversion(3);
+		printf("\n %d %d %d", left_sensor, center_sensor, right_sensor);
 		if (left_sensor == 0 && center_sensor == 255 && right_sensor == 0) {
 			stop();
 			break;
 		}
-		left();
 
 	}
 }
@@ -245,6 +366,23 @@ void right_turn_wls(void)
 	unsigned char left_sensor, center_sensor, right_sensor;
 
 	while (1) {
+
+		right();
+
+		left_sensor = ADC_Conversion(1);
+		center_sensor = ADC_Conversion(2);
+		right_sensor = ADC_Conversion(3);
+		printf("\n %d %d %d", left_sensor, center_sensor, right_sensor);
+		if (left_sensor == 0 && center_sensor == 0 && right_sensor == 0) {
+			stop();
+			break;
+		}
+ }
+
+	while (1) {
+
+		right();
+
 		left_sensor = ADC_Conversion(1);
 		center_sensor = ADC_Conversion(2);
 		right_sensor = ADC_Conversion(3);
@@ -253,7 +391,7 @@ void right_turn_wls(void)
 			stop();
 			break;
 		}
-		right();
+		
 	}
 
 	/*printf("\n %d %d %d", left_sensor, center_sensor, right_sensor);*/
@@ -360,9 +498,46 @@ void Task_1_1(void)
 {
 	forward_wls(1);
 	left_turn_wls();
+
+
 	forward_wls(1);
 	right_turn_wls();
+
 	forward_wls(1);
+	right_turn_wls();
+
+	forward_wls(1);
+	left_turn_wls();
+
+	forward_wls(1);
+	right_turn_wls();
+
+	forward_wls(2);
+	left_turn_wls();
+
+	forward_wls(1);
+	right_turn_wls();
+
+	forward_wls(1);
+	left_turn_wls();
+
+	forward_wls(1);
+	left_turn_wls();
+
+	forward_wls(2);
+	right_turn_wls();
+
+	forward_wls(1);
+	left_turn_wls();
+
+	forward_wls(2);
+	right_turn_wls();
+
+	forward_wls(1);
+
+	stop();
+
+	
 
 
 
